@@ -350,6 +350,7 @@
     <div class="illustration" id="illustration"></div>
     <div class="word-display" id="wordDisplay"></div>
     <button class="got-it-btn unmarked" id="gotItBtn">✓ Got it!</button>
+    <canvas id="cardConfettiCanvas" style="position:absolute;inset:0;width:100%;height:100%;border-radius:28px;pointer-events:none;"></canvas>
   </div>
 </div>
 
@@ -497,42 +498,95 @@ gotItBtn.addEventListener('click', () => {
   const letter = currentData.letter;
 
   if (guessed.has(letter)) {
+    // Undo — just toggle state, no animation
     guessed.delete(letter);
-  } else {
-    guessed.add(letter);
+    const wrap = grid.querySelector(`.tile-wrap[data-letter="${letter}"]`);
+    if (wrap) {
+      wrap.classList.remove('guessed');
+      wrap.querySelector('.tile').classList.remove('guessed');
+    }
+    updateGotItBtn();
+    updateProgress();
+    return;
   }
 
-  // Update tile in grid
+  // Mark as guessed
+  guessed.add(letter);
   const wrap = grid.querySelector(`.tile-wrap[data-letter="${letter}"]`);
   if (wrap) {
-    const tile = wrap.querySelector('.tile');
-    if (guessed.has(letter)) {
-      wrap.classList.add('guessed');
-      tile.classList.add('guessed');
-    } else {
-      wrap.classList.remove('guessed');
-      tile.classList.remove('guessed');
-    }
+    wrap.classList.add('guessed');
+    wrap.querySelector('.tile').classList.add('guessed');
   }
-
   updateGotItBtn();
   updateProgress();
 
-  if (guessed.size === 26) {
+  const allDone = guessed.size === 26;
+
+  // Fire card-level confetti then close
+  launchCardConfetti();
+  setTimeout(() => {
     closeCard();
-    setTimeout(launchCelebration, 300);
-  }
+    if (allDone) setTimeout(launchCelebration, 300);
+  }, 900);
 });
 
 function closeCard() {
   overlay.classList.remove('open');
   document.body.style.overflow = '';
   currentData = null;
+  cancelAnimationFrame(cardAnimFrame);
+  cardCtx.clearRect(0, 0, cardCanvas.width, cardCanvas.height);
 }
 
 closeBtn.addEventListener('click', closeCard);
 overlay.addEventListener('click', e => { if (e.target === overlay) closeCard(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCard(); });
+
+/* ── Card confetti (small burst on Got It) ───────────────── */
+const cardCanvas = document.getElementById('cardConfettiCanvas');
+const cardCtx    = cardCanvas.getContext('2d');
+let cardAnimFrame;
+
+function launchCardConfetti() {
+  cardCanvas.width  = flashcard.offsetWidth;
+  cardCanvas.height = flashcard.offsetHeight;
+  const cx = cardCanvas.width / 2;
+
+  const pieces = Array.from({length: 60}, () => ({
+    x: cx + (Math.random() - 0.5) * 60,
+    y: cardCanvas.height * 0.6,
+    w: 5 + Math.random() * 6,
+    h: 8 + Math.random() * 8,
+    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+    rot: Math.random() * Math.PI * 2,
+    vx: (Math.random() - 0.5) * 8,
+    vy: -(6 + Math.random() * 8),
+    vr: (Math.random() - 0.5) * 0.25,
+  }));
+
+  cancelAnimationFrame(cardAnimFrame);
+
+  function draw() {
+    cardCtx.clearRect(0, 0, cardCanvas.width, cardCanvas.height);
+    let alive = false;
+    pieces.forEach(p => {
+      p.x  += p.vx;
+      p.y  += p.vy;
+      p.vy += 0.35;
+      p.rot += p.vr;
+      if (p.y < cardCanvas.height + 20) alive = true;
+      cardCtx.save();
+      cardCtx.translate(p.x, p.y);
+      cardCtx.rotate(p.rot);
+      cardCtx.fillStyle = p.color;
+      cardCtx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      cardCtx.restore();
+    });
+    if (alive) cardAnimFrame = requestAnimationFrame(draw);
+    else cardCtx.clearRect(0, 0, cardCanvas.width, cardCanvas.height);
+  }
+  draw();
+}
 
 /* ── Confetti ────────────────────────────────────────────── */
 const canvas = document.getElementById('confettiCanvas');
