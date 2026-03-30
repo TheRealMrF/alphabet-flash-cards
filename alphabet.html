@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ABC Flashcards</title>
+<style>
+  :root {
+    --bg: #fff8f0;
+    --font-body: "Varela Round", "Trebuchet MS", "Comic Sans MS", ui-rounded, sans-serif;
+    --font-display: "Chalkboard SE", "Marker Felt", "Varela Round", "Trebuchet MS", ui-rounded, cursive;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    min-height: 100vh;
+    padding: 16px;
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    text-align: center;
+    font-size: clamp(2rem, 8vw, 3.2rem);
+    color: #ff6b6b;
+    margin-bottom: 12px;
+    letter-spacing: 1px;
+    text-shadow: 0 4px 0 rgba(255,107,107,0.2);
+  }
+
+  .toolbar {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .shuffle-btn {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    background: #ff6b6b;
+    color: #fff;
+    border: none;
+    border-radius: 50px;
+    padding: 10px 22px;
+    cursor: pointer;
+    box-shadow: 0 5px 0 #c94f4f;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .shuffle-btn:active {
+    transform: translateY(3px);
+    box-shadow: 0 2px 0 #c94f4f;
+  }
+  .shuffle-icon { display: inline-block; }
+  .shuffle-btn.spinning .shuffle-icon {
+    animation: spin 0.4s ease;
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  /* Progress pip row */
+  .progress-bar {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 16px;
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    color: #888;
+  }
+  .progress-bar strong {
+    font-size: 1rem;
+    color: #333;
+  }
+
+  /* Grid */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    max-width: 700px;
+    margin: 0 auto;
+  }
+  @media (min-width: 480px) { .grid { grid-template-columns: repeat(5, 1fr); gap: 14px; } }
+  @media (min-width: 640px) { .grid { grid-template-columns: repeat(6, 1fr); gap: 16px; } }
+  @media (min-width: 768px) { .grid { grid-template-columns: repeat(7, 1fr); } }
+
+  .tile-wrap {
+    position: relative;
+    aspect-ratio: 1;
+  }
+
+  .tile {
+    width: 100%;
+    height: 100%;
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 5vw, 2.4rem);
+    color: #fff;
+    cursor: pointer;
+    user-select: none;
+    border: none;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+  }
+  .tile:active, .tile:hover { transform: translateY(-3px) scale(1.06); }
+
+  .tile[data-color="0"] { background: #ff6b6b; box-shadow: 0 6px 0 #c94f4f; }
+  .tile[data-color="1"] { background: #ff9f43; box-shadow: 0 6px 0 #c97a2f; }
+  .tile[data-color="2"] { background: #ffd32a; box-shadow: 0 6px 0 #c9a020; color: #7a5a00; }
+  .tile[data-color="3"] { background: #0be881; box-shadow: 0 6px 0 #09b060; color: #004d2a; }
+  .tile[data-color="4"] { background: #00d2d3; box-shadow: 0 6px 0 #009a9a; }
+  .tile[data-color="5"] { background: #54a0ff; box-shadow: 0 6px 0 #2575cc; }
+  .tile[data-color="6"] { background: #c56cf0; box-shadow: 0 6px 0 #9040c0; }
+
+  /* Guessed state: desaturate + dim the tile */
+  .tile.guessed {
+    opacity: 0.38;
+    filter: grayscale(0.6);
+    box-shadow: 0 3px 0 rgba(0,0,0,0.1) !important;
+  }
+
+  /* Green check badge on tile */
+  .tile-check {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 22px;
+    height: 22px;
+    background: #2ecc71;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #fff;
+    opacity: 0;
+    transform: scale(0);
+    transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
+    pointer-events: none;
+    z-index: 2;
+  }
+  .tile-wrap.guessed .tile-check {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  /* Overlay */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  .overlay.open { opacity: 1; pointer-events: all; }
+
+  .flashcard {
+    background: #fff;
+    border-radius: 28px;
+    padding: 28px 24px 28px;
+    width: 100%;
+    max-width: 380px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    position: relative;
+    transform: scale(0.8);
+    transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .overlay.open .flashcard { transform: scale(1); }
+
+  .close-btn {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 3px solid #eee;
+    background: #fff;
+    font-size: 1.4rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #aaa;
+    transition: background 0.15s, color 0.15s;
+    font-family: var(--font-body);
+    font-weight: 900;
+  }
+  .close-btn:hover { background: #ff6b6b; color: #fff; border-color: #ff6b6b; }
+
+  .letter-display {
+    font-family: var(--font-display);
+    font-size: clamp(4rem, 18vw, 7rem);
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+
+  .illustration {
+    margin: 4px auto 12px;
+    font-size: clamp(5rem, 28vw, 9rem);
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .word-display {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 6vw, 2.4rem);
+    letter-spacing: 2px;
+    color: #333;
+    margin-bottom: 20px;
+  }
+  .word-display span.highlight {
+    text-decoration: underline;
+    text-decoration-thickness: 3px;
+    text-underline-offset: 4px;
+  }
+
+  /* Got it button */
+  .got-it-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    padding: 12px 28px;
+    border-radius: 50px;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .got-it-btn:active { transform: translateY(2px); }
+
+  .got-it-btn.unmarked {
+    background: #2ecc71;
+    color: #fff;
+    box-shadow: 0 5px 0 #1fa054;
+  }
+  .got-it-btn.marked {
+    background: #f0f0f0;
+    color: #999;
+    box-shadow: 0 5px 0 #ccc;
+  }
+
+  /* ── Celebration overlay ── */
+  .celebration {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.92);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+  }
+  .celebration.show {
+    opacity: 1;
+    pointer-events: all;
+  }
+  .celebration-text {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 10vw, 4rem);
+    color: #ff6b6b;
+    text-align: center;
+    line-height: 1.3;
+    animation: bounceIn 0.6s cubic-bezier(0.34,1.56,0.64,1) both;
+  }
+  .celebration-sub {
+    font-family: var(--font-body);
+    font-size: clamp(1rem, 4vw, 1.4rem);
+    color: #888;
+    margin-top: 12px;
+    text-align: center;
+  }
+  .celebration-close {
+    margin-top: 28px;
+    font-family: var(--font-display);
+    font-size: 1rem;
+    background: #ff6b6b;
+    color: #fff;
+    border: none;
+    border-radius: 50px;
+    padding: 12px 30px;
+    cursor: pointer;
+    box-shadow: 0 5px 0 #c94f4f;
+    animation: bounceIn 0.6s 0.2s cubic-bezier(0.34,1.56,0.64,1) both;
+  }
+  @keyframes bounceIn {
+    from { transform: scale(0.5); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+  }
+
+  /* Confetti */
+  .confetti-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 199;
+  }
+</style>
+</head>
+<body>
+
+<h1>🌟 ABC Time! 🌟</h1>
+
+<div class="toolbar">
+  <button class="shuffle-btn" id="shuffleBtn">
+    <span class="shuffle-icon">🔀</span> Shuffle
+  </button>
+</div>
+
+<div class="progress-bar" id="progressBar">
+  <span id="progressText">0 / 26</span>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="overlay" id="overlay" role="dialog" aria-modal="true">
+  <div class="flashcard" id="flashcard">
+    <button class="close-btn" id="closeBtn" aria-label="Close">✕</button>
+    <div class="letter-display" id="letterDisplay"></div>
+    <div class="illustration" id="illustration"></div>
+    <div class="word-display" id="wordDisplay"></div>
+    <button class="got-it-btn unmarked" id="gotItBtn">✓ Got it!</button>
+  </div>
+</div>
+
+<!-- Celebration -->
+<canvas class="confetti-canvas" id="confettiCanvas"></canvas>
+<div class="celebration" id="celebration">
+  <div class="celebration-text">🎉 Amazing! 🎉<br>You know all<br>26 letters!</div>
+  <div class="celebration-sub">Way to go! 🌟⭐🌟</div>
+  <button class="celebration-close" id="celebrationClose">Play again!</button>
+</div>
+
+<script>
+const letters = [
+  { letter:'A', word:'apple',     color:'#ff6b6b', emoji:'🍎' },
+  { letter:'B', word:'ball',      color:'#ff9f43', emoji:'⚽' },
+  { letter:'C', word:'cat',       color:'#ffd32a', emoji:'🐱' },
+  { letter:'D', word:'dog',       color:'#0be881', emoji:'🐶' },
+  { letter:'E', word:'egg',       color:'#00d2d3', emoji:'🥚' },
+  { letter:'F', word:'fish',      color:'#54a0ff', emoji:'🐟' },
+  { letter:'G', word:'grapes',    color:'#c56cf0', emoji:'🍇' },
+  { letter:'H', word:'house',     color:'#ff6b6b', emoji:'🏠' },
+  { letter:'I', word:'ice cream', color:'#ff9f43', emoji:'🍦' },
+  { letter:'J', word:'jar',       color:'#ffd32a', emoji:'🫙' },
+  { letter:'K', word:'kite',      color:'#0be881', emoji:'🪁' },
+  { letter:'L', word:'lion',      color:'#00d2d3', emoji:'🦁' },
+  { letter:'M', word:'moon',      color:'#54a0ff', emoji:'🌙' },
+  { letter:'N', word:'nest',      color:'#c56cf0', emoji:'🪺' },
+  { letter:'O', word:'owl',       color:'#ff6b6b', emoji:'🦉' },
+  { letter:'P', word:'pig',       color:'#ff9f43', emoji:'🐷' },
+  { letter:'Q', word:'queen',     color:'#ffd32a', emoji:'👑' },
+  { letter:'R', word:'rainbow',   color:'#0be881', emoji:'🌈' },
+  { letter:'S', word:'sun',       color:'#00d2d3', emoji:'☀️' },
+  { letter:'T', word:'tree',      color:'#54a0ff', emoji:'🌳' },
+  { letter:'U', word:'umbrella',  color:'#c56cf0', emoji:'☂️' },
+  { letter:'V', word:'van',       color:'#ff6b6b', emoji:'🚐' },
+  { letter:'W', word:'whale',     color:'#ff9f43', emoji:'🐳' },
+  { letter:'X', word:'fox',       color:'#ffd32a', emoji:'🦊', highlightIdx: 2 },
+  { letter:'Y', word:'yarn',      color:'#0be881', emoji:'🧶' },
+  { letter:'Z', word:'zebra',     color:'#54a0ff', emoji:'🦓' },
+];
+
+/* ── State ───────────────────────────────────────────────── */
+const guessed = new Set(); // stores letter strings e.g. 'A'
+let currentData = null;
+
+/* ── Shuffle ─────────────────────────────────────────────── */
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/* ── Grid ────────────────────────────────────────────────── */
+const grid = document.getElementById('grid');
+
+function buildGrid(order) {
+  grid.innerHTML = '';
+  order.forEach((data, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'tile-wrap' + (guessed.has(data.letter) ? ' guessed' : '');
+    wrap.dataset.letter = data.letter;
+
+    const tile = document.createElement('button');
+    tile.className = 'tile' + (guessed.has(data.letter) ? ' guessed' : '');
+    tile.textContent = data.letter;
+    tile.setAttribute('data-color', i % 7);
+    tile.setAttribute('aria-label', `Letter ${data.letter} - ${data.word}`);
+    tile.addEventListener('click', () => openCard(data));
+
+    const check = document.createElement('div');
+    check.className = 'tile-check';
+    check.textContent = '✓';
+
+    wrap.appendChild(tile);
+    wrap.appendChild(check);
+    grid.appendChild(wrap);
+  });
+}
+
+buildGrid(letters);
+
+/* ── Shuffle button ──────────────────────────────────────── */
+const shuffleBtn = document.getElementById('shuffleBtn');
+shuffleBtn.addEventListener('click', () => {
+  shuffleBtn.classList.add('spinning');
+  shuffleBtn.addEventListener('animationend', () => shuffleBtn.classList.remove('spinning'), { once: true });
+  buildGrid(shuffle(letters));
+});
+
+/* ── Progress ────────────────────────────────────────────── */
+const progressText = document.getElementById('progressText');
+
+function updateProgress() {
+  const n = guessed.size;
+  progressText.textContent = `${n} / 26`;
+}
+
+/* ── Flashcard ───────────────────────────────────────────── */
+const overlay       = document.getElementById('overlay');
+const flashcard     = document.getElementById('flashcard');
+const letterDisplay = document.getElementById('letterDisplay');
+const illustration  = document.getElementById('illustration');
+const wordDisplay   = document.getElementById('wordDisplay');
+const closeBtn      = document.getElementById('closeBtn');
+const gotItBtn      = document.getElementById('gotItBtn');
+
+function openCard(data) {
+  currentData = data;
+
+  letterDisplay.textContent = `${data.letter}${data.letter.toLowerCase()}`;
+  letterDisplay.style.color = data.color;
+  illustration.textContent = data.emoji;
+
+  const word = data.word;
+  const hIdx = data.highlightIdx !== undefined ? data.highlightIdx : 0;
+  let html = '';
+  for (let i = 0; i < word.length; i++) {
+    html += i === hIdx
+      ? `<span class="highlight" style="color:${data.color}">${word[i]}</span>`
+      : word[i];
+  }
+  wordDisplay.innerHTML = html;
+
+  flashcard.style.borderRadius = '28px';
+  flashcard.style.borderTop = `10px solid ${data.color}`;
+
+  updateGotItBtn();
+
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function updateGotItBtn() {
+  if (!currentData) return;
+  const isGuessed = guessed.has(currentData.letter);
+  gotItBtn.className = 'got-it-btn ' + (isGuessed ? 'marked' : 'unmarked');
+  gotItBtn.textContent = isGuessed ? '✓ Got it! (undo)' : '✓ Got it!';
+}
+
+gotItBtn.addEventListener('click', () => {
+  if (!currentData) return;
+  const letter = currentData.letter;
+
+  if (guessed.has(letter)) {
+    guessed.delete(letter);
+  } else {
+    guessed.add(letter);
+  }
+
+  // Update tile in grid
+  const wrap = grid.querySelector(`.tile-wrap[data-letter="${letter}"]`);
+  if (wrap) {
+    const tile = wrap.querySelector('.tile');
+    if (guessed.has(letter)) {
+      wrap.classList.add('guessed');
+      tile.classList.add('guessed');
+    } else {
+      wrap.classList.remove('guessed');
+      tile.classList.remove('guessed');
+    }
+  }
+
+  updateGotItBtn();
+  updateProgress();
+
+  if (guessed.size === 26) {
+    closeCard();
+    setTimeout(launchCelebration, 300);
+  }
+});
+
+function closeCard() {
+  overlay.classList.remove('open');
+  document.body.style.overflow = '';
+  currentData = null;
+}
+
+closeBtn.addEventListener('click', closeCard);
+overlay.addEventListener('click', e => { if (e.target === overlay) closeCard(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCard(); });
+
+/* ── Confetti ────────────────────────────────────────────── */
+const canvas = document.getElementById('confettiCanvas');
+const ctx    = canvas.getContext('2d');
+let confettiPieces = [];
+let animFrame;
+
+const COLORS = ['#ff6b6b','#ff9f43','#ffd32a','#0be881','#00d2d3','#54a0ff','#c56cf0'];
+
+function launchCelebration() {
+  // resize canvas
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  // spawn confetti
+  confettiPieces = Array.from({length: 160}, () => ({
+    x:    Math.random() * canvas.width,
+    y:    -10 - Math.random() * 200,
+    w:    6 + Math.random() * 8,
+    h:    10 + Math.random() * 10,
+    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+    rot:  Math.random() * Math.PI * 2,
+    vx:   (Math.random() - 0.5) * 3,
+    vy:   2 + Math.random() * 4,
+    vr:   (Math.random() - 0.5) * 0.2,
+  }));
+
+  document.getElementById('celebration').classList.add('show');
+  animateConfetti();
+}
+
+function animateConfetti() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  let allDone = true;
+  confettiPieces.forEach(p => {
+    p.x  += p.vx;
+    p.y  += p.vy;
+    p.rot += p.vr;
+    p.vy += 0.08; // gravity
+    if (p.y < canvas.height + 20) allDone = false;
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+    ctx.restore();
+  });
+
+  if (!allDone) {
+    animFrame = requestAnimationFrame(animateConfetti);
+  } else {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+/* ── Celebration close / reset ───────────────────────────── */
+document.getElementById('celebrationClose').addEventListener('click', () => {
+  document.getElementById('celebration').classList.remove('show');
+  cancelAnimationFrame(animFrame);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Reset all guessed state
+  guessed.clear();
+  updateProgress();
+  buildGrid(letters);
+});
+</script>
+</body>
+</html>
